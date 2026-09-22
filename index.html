@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Convalt Energy — Interaction Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14161a;
+    --ink:#ededE7;
+    --ink-dim:#8c8f92;
+    --line:#33363b;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--bg);
+    overflow:hidden;
+    font-family:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+  body{
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  #canvas-host{
+    position:fixed;
+    inset:0;
+    width:100%;
+    height:100%;
+  }
+  canvas{ display:block; touch-action:none; }
+
+  /* loading */
+  #loading{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg); color:var(--ink-dim);
+    font-size:13px; letter-spacing:.02em;
+    z-index:50;
+    transition:opacity .6s ease;
+  }
+  #loading.hide{ opacity:0; pointer-events:none; }
+
+  /* overlay */
+  .overlay{
+    position:fixed; inset:0;
+    pointer-events:none;
+    z-index:10;
+    display:flex; flex-direction:column; justify-content:flex-end;
+  }
+  .frame{
+    padding: max(28px, env(safe-area-inset-top,0px)) 28px max(28px, env(safe-area-inset-bottom,0px)) 28px;
+    display:flex; flex-direction:column; height:100%;
+  }
+  .top-row{
+    display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .mark{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:13px; font-weight:500;
+    color:var(--ink);
+    letter-spacing:.01em;
+  }
+  .mark span{ color:var(--ink-dim); }
+
+  .progress{
+    display:flex; gap:6px;
+  }
+  .progress i{
+    display:block;
+    width:22px; height:2px;
+    background:var(--line);
+    border-radius:1px;
+    transition:background .5s ease, width .5s ease;
+    font-style:normal;
+  }
+  .progress i.on{ background:var(--accent, var(--ink)); width:34px; }
+
+  .bottom-row{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    gap:24px;
+  }
+  .copy{
+    max-width:420px;
+  }
+  .chapter-index{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:12px;
+    color:var(--accent, var(--ink-dim));
+    margin:0 0 10px 0;
+    transition:color .6s ease;
+  }
+  .chapter-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:500;
+    font-size:clamp(22px,4vw,34px);
+    line-height:1.15;
+    color:var(--ink);
+    margin:0 0 12px 0;
+    opacity:0;
+    transform:translateY(10px);
+    transition:opacity .7s ease, transform .7s ease;
+  }
+  .chapter-title.show{ opacity:1; transform:translateY(0); }
+  .chapter-body{
+    font-size:14.5px;
+    line-height:1.6;
+    color:var(--ink-dim);
+    margin:0;
+    opacity:0;
+    transform:translateY(10px);
+    transition:opacity .7s ease .08s, transform .7s ease .08s;
+  }
+  .chapter-body.show{ opacity:1; transform:translateY(0); }
+
+  .advance{
+    pointer-events:auto;
+    cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    background:none; border:none; color:var(--ink-dim);
+    font-family:'IBM Plex Sans', sans-serif; font-size:11.5px;
+    letter-spacing:.03em;
+    padding:8px;
+  }
+  .advance:focus-visible{ outline:1px solid var(--ink); outline-offset:4px; }
+  .advance svg{
+    width:16px; height:16px;
+    animation: nudge 2.2s ease-in-out infinite;
+  }
+  .advance .word{ opacity:.75; transition:opacity .3s ease; }
+  .advance:hover .word{ opacity:1; }
+  @keyframes nudge{
+    0%,100%{ transform:translateY(0); opacity:.55; }
+    50%{ transform:translateY(5px); opacity:1; }
+  }
+
+  .hint{
+    position:absolute;
+    bottom:100%;
+    left:50%;
+    transform:translateX(-50%);
+    margin-bottom:14px;
+    font-size:11px;
+    color:var(--ink-dim);
+    white-space:nowrap;
+    opacity:0;
+    transition:opacity .5s ease;
+  }
+  .hint.show{ opacity:.6; }
+
+  .end-note{
+    position:fixed;
+    right:28px;
+    bottom:max(28px, env(safe-area-inset-bottom,0px));
+    z-index:10;
+    font-size:12px;
+    color:var(--ink-dim);
+    max-width:220px;
+    text-align:right;
+    line-height:1.5;
+    opacity:0;
+    transition:opacity .8s ease;
+    pointer-events:none;
+  }
+  .end-note.show{ opacity:.8; }
+
+  @media (max-width:640px){
+    .bottom-row{ flex-direction:column; align-items:flex-start; gap:18px; }
+    .frame{ padding:20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .advance svg{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">setting up the scene</div>
+<div id="canvas-host"></div>
+
+<div class="overlay">
+  <div class="frame">
+    <div class="top-row">
+      <div class="mark">Convalt Energy <span>— prototype</span></div>
+      <div class="progress" id="progress"></div>
+    </div>
+
+    <div class="bottom-row">
+      <div class="copy">
+        <p class="chapter-index" id="chapterIndex"></p>
+        <h1 class="chapter-title" id="chapterTitle"></h1>
+        <p class="chapter-body" id="chapterBody"></p>
+      </div>
+
+      <div style="position:relative;">
+        <span class="hint" id="hint">click, tap, or press → to continue</span>
+        <button class="advance" id="advanceBtn" aria-label="Continue to next chapter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+          <span class="word" id="advanceWord">continue</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="end-note" id="endNote">This is a four-chapter proof of interaction — the live build would carry every chapter from the sitemap.</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var CHAPTERS = [
+    {
+      key: "solar",
+      index: "01",
+      title: "Solar manufacturing",
+      body: "Rows of panels come into alignment, one line at a time, as the production floor finds its rhythm.",
+      accent: "#d9a25c"
+    },
+    {
+      key: "power",
+      index: "02",
+      title: "Power generation",
+      body: "Energy moves upward through the conduits — a current made visible, carrying capacity out to the grid.",
+      accent: "#6fa3c7"
+    },
+    {
+      key: "data",
+      index: "03",
+      title: "Data centers",
+      body: "Towers hold steady while pulses of activity travel between them, quiet infrastructure doing constant work.",
+      accent: "#9b93c4"
+    },
+    {
+      key: "recycle",
+      index: "04",
+      title: "Recycling",
+      body: "Material returns to the center of its own loop — the end of one cycle setting up the start of the next.",
+      accent: "#6fae8c"
+    }
+  ];
+
+  var host = document.getElementById('canvas-host');
+  var loading = document.getElementById('loading');
+  var root = document.documentElement;
+
+  var scene, camera, renderer, clock;
+  var chapterGroups = [];
+  var current = 0;
+  var transitioning = false;
+  var idleTimer = null;
+  var hintEl = document.getElementById('hint');
+
+  var CAM_POS = [
+    new THREE.Vector3(0, 1.6, 7.5),
+    new THREE.Vector3(3.4, 1.1, 6.4),
+    new THREE.Vector3(-3.2, 2.0, 6.8),
+    new THREE.Vector3(0, 3.2, 6.0)
+  ];
+  var CAM_LOOK = [
+    new THREE.Vector3(0, 0.4, 0),
+    new THREE.Vector3(0, 0.6, 0),
+    new THREE.Vector3(0, 0.9, 0),
+    new THREE.Vector3(0, 0, 0)
+  ];
+
+  var camPosCurrent = CAM_POS[0].clone();
+  var camLookCurrent = CAM_LOOK[0].clone();
+  var camPosTarget = CAM_POS[0].clone();
+  var camLookTarget = CAM_LOOK[0].clone();
+
+  function init(){
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x14161a);
+    scene.fog = new THREE.FogExp2(0x14161a, 0.055);
+
+    camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.copy(camPosCurrent);
+
+    renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    host.appendChild(renderer.domElement);
+
+    var amb = new THREE.AmbientLight(0xffffff, 0.35);
+    scene.add(amb);
+    var key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(4, 6, 5);
+    scene.add(key);
+    var rim = new THREE.DirectionalLight(0x8fa8c7, 0.35);
+    rim.position.set(-5, 2, -4);
+    scene.add(rim);
+
+    var groundGeo = new THREE.CircleGeometry(14, 64);
+    var groundMat = new THREE.MeshStandardMaterial({ color:0x1b1e23, roughness:1, metalness:0 });
+    var ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.position.y = -0.65;
+    scene.add(ground);
+
+    chapterGroups.push(buildSolar());
+    chapterGroups.push(buildPower());
+    chapterGroups.push(buildData());
+    chapterGroups.push(buildRecycle());
+
+    chapterGroups.forEach(function(g, i){
+      g.visible = (i === 0);
+      scene.add(g);
+    });
+
+    clock = new THREE.Clock();
+    window.addEventListener('resize', onResize);
+    animate();
+
+    setTimeout(function(){ loading.classList.add('hide'); }, 350);
+  }
+
+  function panelMat(color){
+    return new THREE.MeshStandardMaterial({ color:color, roughness:0.35, metalness:0.4 });
+  }
+
+  // Chapter 1 — Solar: grid of panels that tilt into alignment
+  function buildSolar(){
+    var g = new THREE.Group();
+    var mat = panelMat(0x2b2f36);
+    var edgeMat = new THREE.MeshStandardMaterial({ color:0xd9a25c, roughness:0.3, metalness:0.5, emissive:0x3a2712, emissiveIntensity:0.5 });
+    var rows = 5, cols = 7;
+    var geo = new THREE.BoxGeometry(0.62, 0.04, 0.9);
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var m = new THREE.Mesh(geo, c % 3 === 0 ? edgeMat : mat);
+        m.position.set((c-cols/2)*0.78, 0, (r-rows/2)*1.05);
+        m.userData.baseTilt = -0.9;
+        m.rotation.x = -0.9;
+        m.userData.targetTilt = -0.32 - (r*0.02);
+        m.userData.delay = (r*cols + c) * 0.045;
+        g.add(m);
+      }
+    }
+    g.userData.animateIn = function(t){
+      g.children.forEach(function(m){
+        var localT = THREE.MathUtils.clamp((t - m.userData.delay) / 0.8, 0, 1);
+        var eased = 1 - Math.pow(1-localT, 3);
+        m.rotation.x = THREE.MathUtils.lerp(m.userData.baseTilt, m.userData.targetTilt, eased);
+      });
+    };
+    g.userData.idle = function(t){
+      g.rotation.y = Math.sin(t*0.05)*0.05;
+    };
+    return g;
+  }
+
+  // Chapter 2 — Power: conduits with rising light pulses
+  function buildPower(){
+    var g = new THREE.Group();
+    var poleMat = new THREE.MeshStandardMaterial({ color:0x262a30, roughness:0.5, metalness:0.6 });
+    var glowMat = new THREE.MeshStandardMaterial({ color:0x6fa3c7, emissive:0x6fa3c7, emissiveIntensity:1.4, roughness:0.2, metalness:0.1 });
+    var positions = [[-2.6,0],[-0.9,0.3],[0.9,-0.2],[2.6,0.15]];
+    var pulses = [];
+    positions.forEach(function(p, i){
+      var h = 2.6 + i*0.15;
+      var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,h,10), poleMat);
+      pole.position.set(p[0], h/2 - 0.65, p[1]);
+      g.add(pole);
+      for(var k=0;k<2;k++){
+        var pulse = new THREE.Mesh(new THREE.SphereGeometry(0.06,12,12), glowMat);
+        pulse.position.set(p[0], -0.65, p[1]);
+        pulse.userData.speed = 0.55 + Math.random()*0.3;
+        pulse.userData.offset = Math.random();
+        pulse.userData.height = h;
+        pulse.userData.base = -0.65;
+        g.add(pulse);
+        pulses.push(pulse);
+      }
+    });
+    g.userData.pulses = pulses;
+    g.userData.animateIn = function(t){
+      var s = THREE.MathUtils.clamp(t/0.9, 0, 1);
+      g.scale.setScalar(0.85 + 0.15*(1 - Math.pow(1-s,3)));
+    };
+    g.userData.idle = function(t){
+      pulses.forEach(function(p){
+        var cycle = ((t*p.userData.speed) + p.userData.offset) % 1;
+        p.position.y = p.userData.base + cycle * p.userData.height;
+        p.material.emissiveIntensity = 0.6 + Math.sin(cycle*Math.PI)*1.2;
+      });
+    };
+    return g;
+  }
+
+  // Chapter 3 — Data: tower grid with traveling pulses between them
+  function buildData(){
+    var g = new THREE.Group();
+    var towerMat = new THREE.MeshStandardMaterial({ color:0x2a2c34, roughness:0.4, metalness:0.5 });
+    var lineMat = new THREE.MeshStandardMaterial({ color:0x9b93c4, emissive:0x9b93c4, emissiveIntensity:1.1 });
+    var cols = 4, rows = 3;
+    var towers = [];
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var hgt = 1.1 + ((r+c)%3)*0.35;
+        var t = new THREE.Mesh(new THREE.BoxGeometry(0.42,hgt,0.42), towerMat);
+        t.position.set((c-cols/2+0.5)*1.05, hgt/2 - 0.65, (r-rows/2+0.5)*1.05);
+        t.userData.h = hgt;
+        g.add(t);
+        towers.push(t);
+      }
+    }
+    var travelers = [];
+    for(var k=0;k<5;k++){
+      var s = new THREE.Mesh(new THREE.SphereGeometry(0.05,10,10), lineMat);
+      g.add(s);
+      travelers.push({ mesh:s, a: towers[Math.floor(Math.random()*towers.length)], b: towers[Math.floor(Math.random()*towers.length)], t: Math.random(), speed: 0.3+Math.random()*0.25 });
+    }
+    g.userData.animateIn = function(t){
+      var s = THREE.MathUtils.clamp(t/0.9, 0, 1);
+      var eased = 1-Math.pow(1-s,3);
+      towers.forEach(function(tw, i){
+        tw.scale.y = eased;
+        tw.position.y = -0.65 + (tw.userData.h/2)*eased;
+      });
+    };
+    g.userData.idle = function(t){
+      travelers.forEach(function(tr){
+        tr.t += 0.008*tr.speed;
+        if(tr.t > 1){ tr.t = 0; tr.a = towers[Math.floor(Math.random()*towers.length)]; tr.b = towers[Math.floor(Math.random()*towers.length)]; }
+        var pa = tr.a.position, pb = tr.b.position;
+        tr.mesh.position.set(
+          THREE.MathUtils.lerp(pa.x, pb.x, tr.t),
+          Math.max(pa.y,pb.y) + 0.5 + Math.sin(tr.t*Math.PI)*0.3,
+          THREE.MathUtils.lerp(pa.z, pb.z, tr.t)
+        );
+      });
+    };
+    return g;
+  }
+
+  // Chapter 4 — Recycle: particles orbiting into a closed loop
+  function buildRecycle(){
+    var g = new THREE.Group();
+    var mat = new THREE.MeshStandardMaterial({ color:0x6fae8c, emissive:0x6fae8c, emissiveIntensity:0.9, roughness:0.3 });
+    var count = 40;
+    var items = [];
+    for(var i=0;i<count;i++){
+      var m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06,0), mat);
+      var angle = (i/count) * Math.PI*2;
+      var radius = 2.2 + Math.sin(i*1.7)*0.15;
+      m.userData.angle = angle;
+      m.userData.radius = radius;
+      m.userData.speed = 0.12 + (i%5)*0.01;
+      m.userData.yOff = Math.sin(i*2.1)*0.3;
+      g.add(m);
+      items.push(m);
+    }
+    var coreMat = new THREE.MeshStandardMaterial({ color:0x2c332e, roughness:0.5, metalness:0.3 });
+    var core = new THREE.Mesh(new THREE.SphereGeometry(0.5,24,24), coreMat);
+    core.position.y = -0.2;
+    g.add(core);
+    g.userData.items = items;
+    g.userData.animateIn = function(t){
+      var s = THREE.MathUtils.clamp(t/0.9,0,1);
+      g.scale.setScalar(0.8 + 0.2*(1-Math.pow(1-s,3)));
+    };
+    g.userData.idle = function(t){
+      items.forEach(function(m){
+        var a = m.userData.angle + t*m.userData.speed;
+        m.position.set(Math.cos(a)*m.userData.radius, -0.2 + m.userData.yOff, Math.sin(a)*m.userData.radius);
+        m.rotation.x = a; m.rotation.y = a*0.6;
+      });
+    };
+    return g;
+  }
+
+  function onResize(){
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  var chapterStartTime = 0;
+
+  function animate(){
+    requestAnimationFrame(animate);
+    var t = clock.getElapsedTime();
+
+    camPosCurrent.lerp(camPosTarget, 0.035);
+    camLookCurrent.lerp(camLookTarget, 0.035);
+    camera.position.copy(camPosCurrent);
+    camera.lookAt(camLookCurrent);
+
+    var g = chapterGroups[current];
+    if(g.userData.animateIn) g.userData.animateIn(t - chapterStartTime);
+    if(g.userData.idle) g.userData.idle(t);
+
+    renderer.render(scene, camera);
+  }
+
+  function renderProgress(){
+    var el = document.getElementById('progress');
+    el.innerHTML = '';
+    CHAPTERS.forEach(function(c, i){
+      var i2 = document.createElement('i');
+      if(i === current) i2.className = 'on';
+      el.appendChild(i2);
+    });
+  }
+
+  function goTo(i){
+    if(transitioning || i === current || i >= CHAPTERS.length) return;
+    transitioning = true;
+
+    chapterGroups[current].visible = true;
+    chapterGroups[i].visible = true;
+
+    var ch = CHAPTERS[i];
+    root.style.setProperty('--accent', ch.accent);
+
+    var titleEl = document.getElementById('chapterTitle');
+    var bodyEl = document.getElementById('chapterBody');
+    var idxEl = document.getElementById('chapterIndex');
+    titleEl.classList.remove('show');
+    bodyEl.classList.remove('show');
+
+    setTimeout(function(){
+      idxEl.textContent = ch.index;
+      titleEl.textContent = ch.title;
+      bodyEl.textContent = ch.body;
+      titleEl.classList.add('show');
+      bodyEl.classList.add('show');
+    }, 260);
+
+    camPosTarget.copy(CAM_POS[i]);
+    camLookTarget.copy(CAM_LOOK[i]);
+
+    current = i;
+    chapterStartTime = clock.getElapsedTime();
+    renderProgress();
+
+    setTimeout(function(){
+      chapterGroups.forEach(function(grp, gi){ grp.visible = (gi === current); });
+      transitioning = false;
+    }, 550);
+
+    var word = document.getElementById('advanceWord');
+    var btn = document.getElementById('advanceBtn');
+    if(i === CHAPTERS.length - 1){
+      word.textContent = 'restart';
+      document.getElementById('endNote').classList.add('show');
+    } else {
+      word.textContent = 'continue';
+      document.getElementById('endNote').classList.remove('show');
+    }
+    resetIdleHint();
+  }
+
+  function advance(){
+    if(current === CHAPTERS.length - 1){
+      goTo(0);
+    } else {
+      goTo(current + 1);
+    }
+  }
+
+  function resetIdleHint(){
+    hintEl.classList.remove('show');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){ hintEl.classList.add('show'); }, 3800);
+  }
+
+  document.getElementById('advanceBtn').addEventListener('click', advance);
+  host.addEventListener('click', advance);
+  window.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance(); }
+  });
+
+  var touchStartX = null;
+  host.addEventListener('touchstart', function(e){ touchStartX = e.touches[0].clientX; }, {passive:true});
+  host.addEventListener('touchend', function(e){
+    if(touchStartX === null) return;
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    if(Math.abs(dx) > 40) advance();
+    touchStartX = null;
+  }, {passive:true});
+
+  function start(){
+    if(!window.WebGLRenderingContext){
+      loading.textContent = "This experience needs WebGL — please open in an evergreen desktop or mobile browser.";
+      return;
+    }
+    init();
+    root.style.setProperty('--accent', CHAPTERS[0].accent);
+    document.getElementById('chapterIndex').textContent = CHAPTERS[0].index;
+    document.getElementById('chapterTitle').textContent = CHAPTERS[0].title;
+    document.getElementById('chapterBody').textContent = CHAPTERS[0].body;
+    requestAnimationFrame(function(){
+      document.getElementById('chapterTitle').classList.add('show');
+      document.getElementById('chapterBody').classList.add('show');
+    });
+    renderProgress();
+    resetIdleHint();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
